@@ -1,0 +1,8 @@
+**/*.mlpackage
+**/*.mlmodel
+**/info.plist
+**/Assets.xcassets
+**/Base.lproj
+**/*.xcodeproj
+**/Configuration
+**/*.xcconfig
