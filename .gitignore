@@ -6,3 +6,5 @@
 **/*.xcodeproj
 **/Configuration
 **/*.xcconfig
+**/*.DS_Store
+**/LICENSE
