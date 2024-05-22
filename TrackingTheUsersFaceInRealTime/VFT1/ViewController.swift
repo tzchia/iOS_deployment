@@ -40,7 +40,7 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
     
     // face anti-spoofing model
     var predictionText = "live or\n spoof?"
-    private var model: flip_v_0322_255_float16?
+    private var model: all2T_0514_patch16_float16?
     
     // MARK: UIViewController overrides
     
@@ -49,7 +49,7 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
         
         do {
             // Initialize the model
-            model = try flip_v_0322_255_float16(configuration: MLModelConfiguration())
+            model = try all2T_0514_patch16_float16(configuration: MLModelConfiguration())
         } catch {
             // Handle initialization error
             print("Error initializing model: \(error)")
@@ -62,9 +62,9 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
         
         self.prepareVisionRequest()
         
-        DispatchQueue.global(qos: .background).async {
-            self.session?.startRunning()
-        }
+//        DispatchQueue.global(qos: .background).async {
+        self.session?.startRunning()
+//        }
         
         // Add a new layer for displaying rotated and cropped content on the bottom half of the screen
         if let rotatedCroppedLayer = self.rotatedCroppedLayer {
@@ -290,9 +290,7 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
         
         // Start with detection.  Find face, then track it.
         self.detectionRequests = [faceDetectionRequest]
-        
         self.sequenceRequestHandler = VNSequenceRequestHandler()
-        
         self.setupVisionDrawingLayers()
     }
     
@@ -354,7 +352,7 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
         predictionTextLayer.fontSize = 100 // Increase font size
         predictionTextLayer.foregroundColor = UIColor.blue.cgColor
         predictionTextLayer.alignmentMode = .center // Align text to the center horizontally
-        predictionTextLayer.frame = CGRect(x: 0, y: 0, width: 500, height: 250)
+        predictionTextLayer.frame = CGRect(x: 0, y: 0, width: 500, height: 600)
         predictionTextLayer.position = CGPoint(x: 300, y: 1000) // origin: right-bottom
 
         // Rotate the text layer to flip it vertically
@@ -543,17 +541,19 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
         // Check if there are any tracking requests
         guard let requests = self.trackingRequests, !requests.isEmpty else {
             // No tracking object detected, so perform initial detection
-            let imageRequestHandler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer,
-                                                            orientation: exifOrientation,
-                                                            options: requestHandlerOptions)
-            
-            do {
-                guard let detectRequests = self.detectionRequests else {
-                    return
+            autoreleasepool {
+                let imageRequestHandler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer,
+                                                                orientation: exifOrientation,
+                                                                options: requestHandlerOptions)
+                
+                do {
+                    guard let detectRequests = self.detectionRequests else {
+                        return
+                    }
+                    try imageRequestHandler.perform(detectRequests)
+                } catch let error as NSError {
+                    NSLog("Failed to perform FaceRectangleRequest: %@", error)
                 }
-                try imageRequestHandler.perform(detectRequests)
-            } catch let error as NSError {
-                NSLog("Failed to perform FaceRectangleRequest: %@", error)
             }
             return
         }
@@ -648,14 +648,16 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
             // Continue to track detected facial landmarks.
             faceLandmarkRequests.append(faceLandmarksRequest)
             
-            let imageRequestHandler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer,
-                                                            orientation: exifOrientation,
-                                                            options: requestHandlerOptions)
-            
-            do {
-                try imageRequestHandler.perform(faceLandmarkRequests)
-            } catch let error as NSError {
-                NSLog("Failed to perform FaceLandmarkRequest: %@", error)
+            autoreleasepool {
+                let imageRequestHandler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer,
+                                                                orientation: exifOrientation,
+                                                                options: requestHandlerOptions)
+                
+                do {
+                    try imageRequestHandler.perform(faceLandmarkRequests)
+                } catch let error as NSError {
+                    NSLog("Failed to perform FaceLandmarkRequest: %@", error)
+                }
             }
         }
     }
@@ -668,12 +670,12 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
             return nil
         }
         
-//        let flipFace = faceImage//.flipHorizontally()
-//        let flipRotateface = flipFace //.rotated(by: -Double.pi/2)
-        let frfaceSize = faceImage.size // (2316, 3088)
+        let frfaceSize = faceImage.size
 
         // Get the bounding box of the face in image coordinates
         let boundingBox = observation.boundingBox // 0-1
+//        let extent = 0.5
+//        let bigBB = CGRect(x: boundingBox.origin.x - boundingBox.width*extent/2, y: boundingBox.origin.y - boundingBox.height*extent/2, width: boundingBox.width*(1+extent), height: boundingBox.height*(1+extent))
         
         // coordinates of camera and world
         let transform = CGAffineTransform(scaleX: 1, y: -1).translatedBy(x: 0, y: -frfaceSize.height)
@@ -729,7 +731,7 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
         
         // 使用模型和輸入的像素緩衝區進行預測
         guard let prediction = try? model?.prediction(image: pixelBuffer) else { return }
-        let probability = prediction.var_1251
+        let probability = prediction.linear_49 //var_1251
 
         // Define the precision you want for p0 and p1
         let precision = 3
@@ -738,16 +740,9 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
         let inputArray = convertToArray(probability)
         let softmaxOutput = softmax(inputArray!)
         
-//        let p0 = probability[0] as! Float
-//        let p1 = probability[1] as! Float
-//
-//        // Format p0 and p1 to the desired precision
-//        let formattedP0 = String(format: "%.\(precision)f", p0)
-//        let formattedP1 = String(format: "%.\(precision)f", p1)
         let formattedS1 = String(format: "%.\(precision)f", softmaxOutput[1])
 
         var label: String
-//        if p0 > p1 {
         if softmaxOutput[1] < 0.3 {
             label = "spoof"
         } else {
@@ -755,7 +750,7 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
         }
 
         // Update predictionText with formatted probabilities
-        let updatedPredictionText = "label: \(label)\nsoftmax[1]: \(formattedS1)"
+        let updatedPredictionText = "label:\n \(label)\n\nsoftmax[1]:\n \(formattedS1)"
         
         // Ensure UI updates are performed on the main queue
         DispatchQueue.main.async {
@@ -857,29 +852,6 @@ extension UIImage {
         CVPixelBufferUnlockBaseAddress(pixelBuffer!, CVPixelBufferLockFlags(rawValue: 0))
         
         return pixelBuffer
-    }
-    
-    func flipHorizontally() -> UIImage? {
-            UIGraphicsBeginImageContextWithOptions(size, false, scale)
-            guard let context = UIGraphicsGetCurrentContext() else {
-                return nil
-            }
-            
-            // Move the origin to the middle of the image to apply the transformation
-            context.translateBy(x: size.width / 2, y: size.height / 2)
-            
-            // Apply the horizontal flip transformation
-            context.scaleBy(x: -1.0, y: 1.0)
-            
-            // Draw the image with the flipped transformation
-            context.translateBy(x: -size.width / 2, y: -size.height / 2)
-            draw(at: .zero)
-            
-            // Get the new image from the context
-            let flippedImage = UIGraphicsGetImageFromCurrentImageContext()
-            UIGraphicsEndImageContext()
-            
-            return flippedImage
     }
 }
 
