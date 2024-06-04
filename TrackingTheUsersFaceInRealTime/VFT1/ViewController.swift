@@ -40,7 +40,7 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
     
     // face anti-spoofing model
     var predictionText = "live or\n spoof?"
-    private var model: all2T_0514_patch16_float16?
+    private var model: all2all_0528_float16?
     
     // MARK: UIViewController overrides
     
@@ -49,7 +49,7 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
         
         do {
             // Initialize the model
-            model = try all2T_0514_patch16_float16(configuration: MLModelConfiguration())
+            model = try all2all_0528_float16(configuration: MLModelConfiguration())
         } catch {
             // Handle initialization error
             print("Error initializing model: \(error)")
@@ -62,9 +62,16 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
         
         self.prepareVisionRequest()
         
+        // Global Queue
 //        DispatchQueue.global(qos: .background).async {
-        self.session?.startRunning()
+//        self.session?.startRunning()
 //        }
+        
+        // Custom Queue
+        let backgroundQueue = DispatchQueue(label: "com.yourapp.capturesession")
+        backgroundQueue.async { [weak self] in
+            self?.session!.startRunning()
+        }
         
         // Add a new layer for displaying rotated and cropped content on the bottom half of the screen
         if let rotatedCroppedLayer = self.rotatedCroppedLayer {
@@ -80,12 +87,10 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
         super.didReceiveMemoryWarning()
     }
     
-    // Ensure that the interface stays locked in Portrait.
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
         return .portrait
     }
     
-    // Ensure that the interface stays locked in Portrait.
     override var preferredInterfaceOrientationForPresentation: UIInterfaceOrientation {
         return .portrait
     }
@@ -200,10 +205,10 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
         
         if let previewRootLayer = self.previewView?.layer {
             self.rootLayer = previewRootLayer
-            
-            videoPreviewLayer.frame = previewRootLayer.bounds
 
             previewRootLayer.masksToBounds = true
+            videoPreviewLayer.frame = previewRootLayer.bounds
+
             previewRootLayer.addSublayer(videoPreviewLayer) // display the content of frontal camera to screen
         }
     }
@@ -237,19 +242,11 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
     }
     
     func exifOrientationForDeviceOrientation(_ deviceOrientation: UIDeviceOrientation) -> CGImagePropertyOrientation {
-        
         switch deviceOrientation {
-        case .portraitUpsideDown:
+        case .unknown:
             return .right // .rightMirrored
-            
-        case .landscapeLeft:
-            return .down // .downMirrored
-            
-        case .landscapeRight:
-            return .up // .upMirrored
-            
         default:
-            return .up // .leftMirrored
+            return .right
         }
     }
     
@@ -274,9 +271,6 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
             guard let faceDetectionRequest = request as? VNDetectFaceRectanglesRequest,
                   let results = faceDetectionRequest.results else {
                 return
-            }
-            if results.isEmpty {
-                self.trackingRequests?.removeAll()
             }
             DispatchQueue.main.async {
                 // Add the observations to the tracking list
@@ -352,8 +346,8 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
         predictionTextLayer.fontSize = 100 // Increase font size
         predictionTextLayer.foregroundColor = UIColor.blue.cgColor
         predictionTextLayer.alignmentMode = .center // Align text to the center horizontally
-        predictionTextLayer.frame = CGRect(x: 0, y: 0, width: 500, height: 600)
-        predictionTextLayer.position = CGPoint(x: 300, y: 1000) // origin: right-bottom
+        predictionTextLayer.frame = CGRect(x: 0, y: 0, width: 1000, height: 300)
+        predictionTextLayer.position = CGPoint(x: 1200, y: 2100) // origin: right-bottom
 
         // Rotate the text layer to flip it vertically
         let verticalFlipTransform = CATransform3DMakeRotation(CGFloat.pi, 1.0, 0.0, 0.0)
@@ -409,17 +403,18 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
             scaleY = scaleX
             
         default:
-//            rotation = 0
-//            scaleX = videoPreviewRect.width / captureDeviceResolution.width // 3088
-//            scaleY = videoPreviewRect.height / captureDeviceResolution.height // 2316
-            rotation = 90
-            scaleX = videoPreviewRect.height / captureDeviceResolution.width // enlarger this only do so to borderline, but not content included
-            scaleY = scaleX
+            rotation = 0
+            scaleX = videoPreviewRect.width / captureDeviceResolution.width // 3088
+            scaleY = videoPreviewRect.height / captureDeviceResolution.height // 2316
+//            rotation = 90
+//            scaleX = videoPreviewRect.height / captureDeviceResolution.width // enlarger this only do so to borderline, but not content included
+//            scaleY = scaleX
         }
         
         // Scale and mirror the image to ensure upright presentation.
         let affineTransform = CGAffineTransform(rotationAngle: radiansForDegrees(rotation))
-            .scaledBy(x: scaleX, y: scaleY) //.translatedBy(x: -(captureDeviceResolution.width / 2), y: -(captureDeviceResolution.height / 2))
+            .scaledBy(x: -scaleX, y: -scaleY)
+//        let affineTransform = CGAffineTransform(scaleX: -scaleX, y: -scaleY)
         overlayLayer.setAffineTransform(affineTransform)
         
         // Cover entire screen UI.
@@ -482,7 +477,7 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
             let length2 = rightPupil!.y - leftPupil!.y
             
             let angle = atan(length1/length2) //*180/Double.pi
-            if (angle > 0) {self.angle = -angle} else {self.angle = Double.pi - angle}
+            if (angle > 0) {self.angle = Double.pi/2 - angle} else {self.angle = 3*Double.pi/2 - angle}
         }
     }
     
@@ -524,8 +519,7 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
         var requestHandlerOptions: [VNImageOption: AnyObject] = [:]
         
         // Retrieve camera intrinsic data
-        let cameraIntrinsicData = CMGetAttachment(sampleBuffer, key: kCMSampleBufferAttachmentKey_CameraIntrinsicMatrix, attachmentModeOut: nil)
-        if cameraIntrinsicData != nil {
+        if let cameraIntrinsicData = CMGetAttachment(sampleBuffer, key: kCMSampleBufferAttachmentKey_CameraIntrinsicMatrix, attachmentModeOut: nil) {
             requestHandlerOptions[VNImageOption.cameraIntrinsics] = cameraIntrinsicData
         }
         
@@ -537,23 +531,22 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
         
         // Determine the current device orientation for correct image orientation
         let exifOrientation = self.exifOrientationForCurrentDeviceOrientation()
+//        let otherOrientation = exifOrientationForCurrentDeviceOrientation(exifOrientationForDeviceOrientation(.unknown))
         
         // Check if there are any tracking requests
         guard let requests = self.trackingRequests, !requests.isEmpty else {
             // No tracking object detected, so perform initial detection
-            autoreleasepool {
-                let imageRequestHandler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer,
-                                                                orientation: exifOrientation,
-                                                                options: requestHandlerOptions)
-                
-                do {
-                    guard let detectRequests = self.detectionRequests else {
-                        return
-                    }
-                    try imageRequestHandler.perform(detectRequests)
-                } catch let error as NSError {
-                    NSLog("Failed to perform FaceRectangleRequest: %@", error)
-                }
+            let imageRequestHandler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer,
+                                                            orientation: exifOrientation,
+                                                            options: requestHandlerOptions)
+            
+            do {
+                guard let detectRequests = self.detectionRequests else {
+                    return
+            }
+            try imageRequestHandler.perform(detectRequests)
+            } catch let error as NSError {
+                NSLog("Failed to perform FaceRectangleRequest: %@", error)
             }
             return
         }
@@ -580,7 +573,8 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
             }
             
             if !trackingRequest.isLastFrame {
-                if observation.confidence > 0.3 {
+//                print("\(observation.confidence)")
+                if observation.confidence > 0.7 { // 0.3
                     trackingRequest.inputObservation = observation
                 } else {
                     trackingRequest.isLastFrame = true
@@ -601,7 +595,7 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
         // Perform landmark detection on tracked faces.
         for trackingRequest in newTrackingRequests {
             
-            let faceLandmarksRequest = VNDetectFaceLandmarksRequest(completionHandler: { (request, error) in
+            let faceLandmarksRequest = VNDetectFaceLandmarksRequest(completionHandler: { [self] (request, error) in
                 
                 if error != nil {
                     print("FaceLandmarks error: \(String(describing: error)).")
@@ -612,24 +606,26 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
                     return
                 }
                 
-                // Perform all UI updates (drawing) on the main queue, not the background queue on which this handler is being called.
-                DispatchQueue.main.async {
-                    self.drawFaceObservations(results)
+                self.drawFaceObservations(results)
 
-//                    for observation in results {
-                    let observation = results[0]
-                    if let rotatedCroppedImage = self.getRotatedCroppedImage(from: pixelBuffer, with: observation) {
+                for observation in results {
+                    //                let observation = results[0]
+                    if let rotatedCroppedImage = self.getRotatedCroppedImage(from: pixelBuffer, with: observation, orientation: exifOrientation) {
                         // Convert UIImage to CGImage
                         guard let cgImage = rotatedCroppedImage.cgImage else {
                             print("Failed to convert UIImage to CGImage.")
                             return
                         }
-
+                        
+                        // save an UIImage
+//                        UIImageWriteToSavedPhotosAlbum(rotatedCroppedImage, nil, nil, nil)
+                        
+                        self.processImage(image: rotatedCroppedImage)
+                        
                         // Update the contents and frame of rotatedCroppedLayer
                         DispatchQueue.main.async {
                             self.rotatedCroppedLayer?.contents = cgImage
                             self.rotatedCroppedLayer?.frame = CGRect(x: 0, y: 0, width: rotatedCroppedImage.size.width, height: rotatedCroppedImage.size.height)
-//                            self.processImage(image: rotatedCroppedImage)
                         }
                     }
                 }
@@ -648,42 +644,47 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
             // Continue to track detected facial landmarks.
             faceLandmarkRequests.append(faceLandmarksRequest)
             
-            autoreleasepool {
-                let imageRequestHandler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer,
-                                                                orientation: exifOrientation,
-                                                                options: requestHandlerOptions)
-                
-                do {
-                    try imageRequestHandler.perform(faceLandmarkRequests)
-                } catch let error as NSError {
-                    NSLog("Failed to perform FaceLandmarkRequest: %@", error)
-                }
+            let imageRequestHandler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer,
+                                                            orientation: exifOrientation,
+                                                            options: requestHandlerOptions)
+            
+            do {
+                try imageRequestHandler.perform(faceLandmarkRequests)
+            } catch let error as NSError {
+                NSLog("Failed to perform FaceLandmarkRequest: %@", error)
             }
         }
     }
     
     // Helper function to get rotated and cropped image
-    func getRotatedCroppedImage(from pixelBuffer: CVPixelBuffer, with observation: VNFaceObservation) -> UIImage? {
+    func getRotatedCroppedImage(from pixelBuffer: CVPixelBuffer, with observation: VNFaceObservation, orientation: CGImagePropertyOrientation) -> UIImage? {
         // Convert pixel buffer to UIImage
-        guard let faceImage = UIImage(pixelBuffer: pixelBuffer) else { // width = 3088, height = 2316
+        guard let bkg = UIImage(pixelBuffer: pixelBuffer) else { // width = 3088, height = 2316
             print("Failed to convert pixel buffer to UIImage.")
             return nil
         }
         
-        let frfaceSize = faceImage.size
+        // if self.angle add here, it would be cropped irregularly
+        let rotatedBKG: UIImage?
+        switch orientation {
+        case .right, .rightMirrored:
+            rotatedBKG = bkg.rotated(by: Double.pi/2)
+        default:
+            rotatedBKG = bkg
+        }
+        
+        let faceSize = rotatedBKG!.size // width=3088, height=2316
 
         // Get the bounding box of the face in image coordinates
         let boundingBox = observation.boundingBox // 0-1
-//        let extent = 0.5
-//        let bigBB = CGRect(x: boundingBox.origin.x - boundingBox.width*extent/2, y: boundingBox.origin.y - boundingBox.height*extent/2, width: boundingBox.width*(1+extent), height: boundingBox.height*(1+extent))
         
         // coordinates of camera and world
-        let transform = CGAffineTransform(scaleX: 1, y: -1).translatedBy(x: 0, y: -frfaceSize.height)
-        let translate = CGAffineTransform.identity.scaledBy(x: frfaceSize.width, y: frfaceSize.height)
+        let transform = CGAffineTransform(scaleX: 1, y: -1).translatedBy(x: 0, y: -faceSize.height)
+        let translate = CGAffineTransform.identity.scaledBy(x: faceSize.width, y: faceSize.height)
         let facebounds = boundingBox.applying(translate).applying(transform)
         
         // Crop the face image
-        let croppedImage = faceImage.crop(to: facebounds)
+        let croppedImage = rotatedBKG!.crop(to: facebounds)
         
         // Rotate the cropped image
         let rotatedCropped = croppedImage!.rotated(by: self.angle)
@@ -743,14 +744,14 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
         let formattedS1 = String(format: "%.\(precision)f", softmaxOutput[1])
 
         var label: String
-        if softmaxOutput[1] < 0.3 {
+        if softmaxOutput[1] < 0.9 {
             label = "spoof"
         } else {
             label = "live"
         }
 
         // Update predictionText with formatted probabilities
-        let updatedPredictionText = "label:\n \(label)\n\nsoftmax[1]:\n \(formattedS1)"
+        let updatedPredictionText = "\(label)\nsoftmax[1]:\t\t\(formattedS1)"
         
         // Ensure UI updates are performed on the main queue
         DispatchQueue.main.async {
@@ -852,6 +853,48 @@ extension UIImage {
         CVPixelBufferUnlockBaseAddress(pixelBuffer!, CVPixelBufferLockFlags(rawValue: 0))
         
         return pixelBuffer
+    }
+    func correctedOrientation() -> UIImage {
+        guard let cgImage = self.cgImage else {
+            return self
+        }
+        
+        if self.imageOrientation == .up {
+            return self
+        }
+        
+        var transform = CGAffineTransform.identity
+        switch self.imageOrientation {
+        case .down, .downMirrored:
+            transform = transform.rotated(by: .pi)
+        case .left, .leftMirrored:
+            transform = transform.rotated(by: .pi / 2)
+        case .right, .rightMirrored:
+            transform = transform.rotated(by: -.pi / 2)
+        case .up, .upMirrored:
+            break
+        @unknown default:
+            break
+        }
+        
+        guard let colorSpace = cgImage.colorSpace else { return self }
+        
+        guard let context = CGContext(data: nil, width: cgImage.width, height: cgImage.height, bitsPerComponent: cgImage.bitsPerComponent, bytesPerRow: 0, space: colorSpace, bitmapInfo: cgImage.bitmapInfo.rawValue) else {
+            return self
+        }
+        
+        context.concatenate(transform)
+        
+        switch self.imageOrientation {
+        case .left, .leftMirrored, .right, .rightMirrored:
+            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: cgImage.height, height: cgImage.width))
+        default:
+            context.draw(cgImage, in: CGRect(x: 0, y: 0, width: cgImage.width, height: cgImage.height))
+        }
+        
+        guard let newCGImage = context.makeImage() else { return self }
+        
+        return UIImage(cgImage: newCGImage)
     }
 }
 
