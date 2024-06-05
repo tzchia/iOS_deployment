@@ -40,7 +40,7 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
     
     // face anti-spoofing model
     var predictionText = "live or\n spoof?"
-    private var model: all2all_0528_float16?
+    private var model: _424_0531_float16?
     
     // MARK: UIViewController overrides
     
@@ -49,7 +49,7 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
         
         do {
             // Initialize the model
-            model = try all2all_0528_float16(configuration: MLModelConfiguration())
+            model = try _424_0531_float16(configuration: MLModelConfiguration())
         } catch {
             // Handle initialization error
             print("Error initializing model: \(error)")
@@ -678,10 +678,17 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
         // Get the bounding box of the face in image coordinates
         let boundingBox = observation.boundingBox // 0-1
         
+        let enlargedBB = CGRect(
+            x: boundingBox.origin.x - boundingBox.size.width * 0.1,
+            y: boundingBox.origin.y - boundingBox.size.height * 0.1,
+            width: boundingBox.size.width * 1.2,
+            height: boundingBox.size.width * 1.2
+        )
+        
         // coordinates of camera and world
         let transform = CGAffineTransform(scaleX: 1, y: -1).translatedBy(x: 0, y: -faceSize.height)
         let translate = CGAffineTransform.identity.scaledBy(x: faceSize.width, y: faceSize.height)
-        let facebounds = boundingBox.applying(translate).applying(transform)
+        let facebounds = enlargedBB.applying(translate).applying(transform)
         
         // Crop the face image
         let croppedImage = rotatedBKG!.crop(to: facebounds)
@@ -751,7 +758,7 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
         }
 
         // Update predictionText with formatted probabilities
-        let updatedPredictionText = "\(label)\nsoftmax[1]:\t\t\(formattedS1)"
+        let updatedPredictionText = "\(label)\n\(formattedS1)"
         
         // Ensure UI updates are performed on the main queue
         DispatchQueue.main.async {
