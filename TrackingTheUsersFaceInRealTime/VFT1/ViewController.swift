@@ -520,7 +520,6 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
     // Handle delegate method callback on receiving a sample buffer.
     // Declare reusable properties at the class level
     public func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
-        
         var requestHandlerOptions: [VNImageOption: AnyObject] = [:]
         
         // Retrieve camera intrinsic data
@@ -536,20 +535,38 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
         
         // Determine the current device orientation for correct image orientation
         let exifOrientation = self.exifOrientationForCurrentDeviceOrientation()
-        //        let otherOrientation = exifOrientationForCurrentDeviceOrientation(exifOrientationForDeviceOrientation(.unknown))
         
         // Check if there are any tracking requests
         guard let requests = self.trackingRequests, !requests.isEmpty else {
             // No tracking object detected, so perform initial detection
+            let detectFaceRequest = VNDetectFaceRectanglesRequest { [weak self] (request, error) in
+                guard let self = self else { return }
+                if let error = error {
+                    print("Face detection error: \(error.localizedDescription)")
+                    return
+                }
+                
+                guard let results = request.results as? [VNFaceObservation], !results.isEmpty else {
+                    print("No faces detected.")
+                    return
+                }
+                
+                // Find the largest face
+                let largestFace = results.max { $0.boundingBox.width * $0.boundingBox.height < $1.boundingBox.width * $1.boundingBox.height }
+                
+                guard let largestFaceObservation = largestFace else { return }
+                
+                // Create a new tracking request for the largest face
+                let trackingRequest = VNTrackObjectRequest(detectedObjectObservation: largestFaceObservation)
+                self.trackingRequests = [trackingRequest]
+            }
+            
             let imageRequestHandler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer,
                                                             orientation: exifOrientation,
                                                             options: requestHandlerOptions)
             
             do {
-                guard let detectRequests = self.detectionRequests else {
-                    return
-                }
-                try imageRequestHandler.perform(detectRequests)
+                try imageRequestHandler.perform([detectFaceRequest])
             } catch let error as NSError {
                 NSLog("Failed to perform FaceRectangleRequest: %@", error)
             }
@@ -565,17 +582,11 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
             NSLog("Failed to perform SequenceRequest: %@", error)
         }
         
-        // Setup the next round of tracking.
+        // Setup the next round of tracking
         var newTrackingRequests = [VNTrackObjectRequest]()
         for trackingRequest in requests {
-            
-            guard let results = trackingRequest.results else {
-                return
-            }
-            
-            guard let observation = results[0] as? VNDetectedObjectObservation else {
-                return
-            }
+            guard let results = trackingRequest.results else { continue }
+            guard let observation = results.first as? VNDetectedObjectObservation else { continue }
             
             if !trackingRequest.isLastFrame {
                 self.Confidence = observation.confidence
@@ -596,71 +607,56 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
         }
         
         if self.Confidence > 0.7 {
-            // Perform face landmark tracking on detected faces.
-            var faceLandmarkRequests = [VNDetectFaceLandmarksRequest]()
-            
-            // Perform landmark detection on tracked faces.
-            for trackingRequest in newTrackingRequests {
+            // Perform face landmark tracking on the largest detected face.
+            let trackingRequest = newTrackingRequests.first!
+            let faceLandmarksRequest = VNDetectFaceLandmarksRequest { [weak self] (request, error) in
+                guard let self = self else { return }
+                if let error = error {
+                    print("FaceLandmarks error: \(String(describing: error)).")
+                    return
+                }
                 
-                let faceLandmarksRequest = VNDetectFaceLandmarksRequest(completionHandler: { [self] (request, error) in
-                    
-                    if error != nil {
-                        print("FaceLandmarks error: \(String(describing: error)).")
-                    }
-                    
-                    guard let landmarksRequest = request as? VNDetectFaceLandmarksRequest,
-                          let results = landmarksRequest.results else {
-                        return
-                    }
-                    
-                    self.drawFaceObservations(results)
-                    
-                    for observation in results {
-                        //                let observation = results[0]
-                        if let rotatedCroppedImage = self.getRotatedCroppedImage(from: pixelBuffer, with: observation, orientation: exifOrientation) {
-                            // Convert UIImage to CGImage
-                            guard let cgImage = rotatedCroppedImage.cgImage else {
-                                print("Failed to convert UIImage to CGImage.")
-                                return
-                            }
-                            
-                            // save an UIImage
-                            //                        UIImageWriteToSavedPhotosAlbum(rotatedCroppedImage, nil, nil, nil)
-                            
-                            self.processImage(image: rotatedCroppedImage)
-                            
-                            // Update the contents and frame of rotatedCroppedLayer
-                            DispatchQueue.main.async {
-                                self.rotatedCroppedLayer?.contents = cgImage
-                                self.rotatedCroppedLayer?.frame = CGRect(x: 0, y: 0, width: rotatedCroppedImage.size.width, height: rotatedCroppedImage.size.height)
-                            }
+                guard let landmarksRequest = request as? VNDetectFaceLandmarksRequest,
+                      let results = landmarksRequest.results else {
+                    return
+                }
+                
+                self.drawFaceObservations(results)
+                
+                for observation in results {
+                    if let rotatedCroppedImage = self.getRotatedCroppedImage(from: pixelBuffer, with: observation, orientation: exifOrientation) {
+                        // Convert UIImage to CGImage
+                        guard let cgImage = rotatedCroppedImage.cgImage else {
+                            print("Failed to convert UIImage to CGImage.")
+                            return
+                        }
+                        
+                        // Save the UIImage or process it as needed
+                        self.processImage(image: rotatedCroppedImage)
+                        
+                        // Update the contents and frame of rotatedCroppedLayer
+                        DispatchQueue.main.async {
+                            self.rotatedCroppedLayer?.contents = cgImage
+                            self.rotatedCroppedLayer?.frame = CGRect(x: 0, y: 0, width: rotatedCroppedImage.size.width, height: rotatedCroppedImage.size.height)
                         }
                     }
-                })
-                
-                
-                guard let trackingResults = trackingRequest.results else {
-                    return
                 }
-                
-                guard let observation = trackingResults[0] as? VNDetectedObjectObservation else {
-                    return
-                }
-                let faceObservation = VNFaceObservation(boundingBox: observation.boundingBox)
-                faceLandmarksRequest.inputFaceObservations = [faceObservation]
-                
-                // Continue to track detected facial landmarks.
-                faceLandmarkRequests.append(faceLandmarksRequest)
-                
-                let imageRequestHandler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer,
-                                                                orientation: exifOrientation,
-                                                                options: requestHandlerOptions)
-                
-                do {
-                    try imageRequestHandler.perform(faceLandmarkRequests) // detected results appear
-                } catch let error as NSError {
-                    NSLog("Failed to perform FaceLandmarkRequest: %@", error)
-                }
+            }
+            
+            guard let trackingResults = trackingRequest.results else { return }
+            guard let observation = trackingResults.first as? VNDetectedObjectObservation else { return }
+            
+            let faceObservation = VNFaceObservation(boundingBox: observation.boundingBox)
+            faceLandmarksRequest.inputFaceObservations = [faceObservation]
+            
+            let imageRequestHandler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer,
+                                                            orientation: exifOrientation,
+                                                            options: requestHandlerOptions)
+            
+            do {
+                try imageRequestHandler.perform([faceLandmarksRequest])
+            } catch let error as NSError {
+                NSLog("Failed to perform FaceLandmarkRequest: %@", error)
             }
         }
     }
