@@ -40,7 +40,7 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
     
     // face anti-spoofing model
     var predictionText = "live or\n spoof?"
-    private var model: _0607_424_mcl_float16?
+    private var model: _0708_mcl_run0?
     
     // face detection confidence
     var Confidence: Float = 0.0
@@ -52,7 +52,7 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
         
         do {
             // Initialize the model
-            model = try _0607_424_mcl_float16(configuration: MLModelConfiguration())
+            model = try _0708_mcl_run0(configuration: MLModelConfiguration())
         } catch {
             // Handle initialization error
             print("Error initializing model: \(error)")
@@ -685,9 +685,9 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
         
         let enlargedBB = CGRect(
             x: boundingBox.origin.x - boundingBox.size.width * 0.1,
-            y: boundingBox.origin.y - boundingBox.size.height * 0.1,
+            y: boundingBox.origin.y - boundingBox.size.height * 0.05,
             width: boundingBox.size.width * 1.2,
-            height: boundingBox.size.width * 1.2
+            height: boundingBox.size.height * 1.1
         )
         
         // coordinates of camera and world
@@ -702,9 +702,9 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
         let rotatedCropped = croppedImage!.rotated(by: self.angle)
        
         // Resize the image to 224x224
-        let resizedRotatedCroppedImage = rotatedCropped?.resize(to: CGSize(width: 224, height: 224))
+        let resizedRotatedCroppedImage = rotatedCropped?.resize(to: CGSize(width: 224, height: 224)) //rotatedCropped
         
-        return resizedRotatedCroppedImage
+        return resizedRotatedCroppedImage //resizedRotatedCroppedImage
     }
     
     func softmax(_ input: [Double]) -> [Double] {
@@ -760,6 +760,7 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
             label = "spoof"
         } else {
             label = "live"
+//            UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
         }
 
         // Update predictionText with formatted probabilities
