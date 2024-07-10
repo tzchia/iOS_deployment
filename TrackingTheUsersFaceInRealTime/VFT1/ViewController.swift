@@ -40,7 +40,7 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
     
     // face anti-spoofing model
     var predictionText = "live or\n spoof?"
-    private var model: _0708_mcl_run0?
+    private var model: _0708_mcl_run0_softmax?
     
     // face detection confidence
     var Confidence: Float = 0.0
@@ -52,7 +52,7 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
         
         do {
             // Initialize the model
-            model = try _0708_mcl_run0(configuration: MLModelConfiguration())
+            model = try _0708_mcl_run0_softmax(configuration: MLModelConfiguration())
         } catch {
             // Handle initialization error
             print("Error initializing model: \(error)")
@@ -707,35 +707,6 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
         return resizedRotatedCroppedImage //resizedRotatedCroppedImage
     }
     
-    func softmax(_ input: [Double]) -> [Double] {
-        // Step 1: Find the maximum value in the input array for numerical stability
-        guard let maxValue = input.max() else { return [] }
-        
-        // Step 2: Subtract the maximum value from each element in the input array
-        let adjustedInput = input.map { $0 - maxValue }
-
-        // Step 3: Compute the exponentials of the elements
-        var expInput = [Double](repeating: 0.0, count: adjustedInput.count)
-        vvexp(&expInput, adjustedInput, [Int32(adjustedInput.count)])
-        
-        // Step 4: Compute the sum of the exponentials
-        let sumExp = expInput.reduce(0, +)
-
-        // Step 5: Divide each exponential by the sum of exponentials
-        let result = expInput.map { $0 / sumExp }
-
-        return result
-    }
-    
-    func convertToArray(_ mlMultiArray: MLMultiArray) -> [Double]? {
-        let count = mlMultiArray.count
-        var array = [Double](repeating: 0.0, count: count)
-        for i in 0..<count {
-            array[i] = mlMultiArray[i].doubleValue
-        }
-        return array
-    }
-    
     func processImage(image: UIImage) {
         // 將處理後的圖片轉換為像素緩衝區，以供模型輸入使用 //newImage
         guard let pixelBuffer = image.toPixelBuffer(pixelFormatType:  kCVPixelFormatType_32ARGB, width: 224, height: 224) else {
@@ -744,19 +715,14 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
         
         // 使用模型和輸入的像素緩衝區進行預測
         guard let prediction = try? model?.prediction(image: pixelBuffer) else { return }
-        let probability = prediction.var_4088
+        let probability = Float(truncating: prediction.var_4115[0])
 
         // Define the precision you want for p0 and p1
         let precision = 3
-        
-        // Apply the softmax function along the specified dimension (axis).
-        let inputArray = convertToArray(probability)
-        let softmaxOutput = softmax(inputArray!)
-        
-        let formattedS1 = String(format: "%.\(precision)f", softmaxOutput[1])
+        let formattedS1 = String(format: "%.\(precision)f", probability)
 
         var label: String
-        if softmaxOutput[1] < 0.9 {
+        if probability < 0.9 {
             label = "spoof"
         } else {
             label = "live"
