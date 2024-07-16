@@ -1,8 +1,8 @@
 import coremltools as ct, numpy as np, torch, sys
 sys.path.append('/Users/tc/Program/passive_face_anti-spoofing/FLIP')
-from fas_cpu import flip_mcl
+from fas_cpu import flip_it
 
-net1 = flip_mcl(in_dim=512, ssl_mlp_dim=4096, ssl_emb_dim=256).to('cpu')
+net1 = flip_it().to('cpu')
 ckpt = torch.load('/Users/tc/Program/passive_face_anti-spoofing/FLIP/log/0711/0711_it_L14.pth.tar', map_location=torch.device('cpu'))
 net1.load_state_dict(ckpt["state_dict"])
 net1.eval() # To ensure that operations such as dropout are disabled, it’s important to set the model to evaluation mode (not training mode) before tracing. This setting also results in a more optimized version of the model for conversion.

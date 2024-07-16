@@ -40,7 +40,7 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
     
     // face anti-spoofing model
     var predictionText = "live or\n spoof?"
-    private var model: _0710_mcl_run0?
+    private var model: _0711_it_L14?
     
     // face detection confidence
     var Confidence: Float = 0.0
@@ -52,7 +52,7 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
         
         do {
             // Initialize the model
-            model = try _0710_mcl_run0(configuration: MLModelConfiguration())
+            model = try _0711_it_L14(configuration: MLModelConfiguration())
         } catch {
             // Handle initialization error
             print("Error initializing model: \(error)")
@@ -715,7 +715,7 @@ class ViewController: UIViewController, AVCaptureVideoDataOutputSampleBufferDele
         
         // 使用模型和輸入的像素緩衝區進行預測
         guard let prediction = try? model?.prediction(image: pixelBuffer) else { return }
-        let probability = Float(truncating: prediction.var_4115[0])
+        let probability = Float(truncating: prediction.var_5251[0])
 
         // Define the precision you want for p0 and p1
         let precision = 3
